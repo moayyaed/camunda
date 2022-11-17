@@ -172,13 +172,17 @@ jobs:
         with:
           name: "unit tests"
   smoke-tests:
-    name: Smoke tests on ${{ matrix.os }}
+    name: Smoke tests ${{ matrix.os }} on ${{ matrix.arch }}
     timeout-minutes: 20
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ macos-latest, windows-latest, ubuntu-latest ]
+        arch: [ amd64 ]
+        include:
+          - os: ubuntu-latest
+            arch: arm64
     env:
       JAVA_TOOL_OPTIONS: -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=64M
     steps:
@@ -189,10 +193,22 @@ jobs:
           # setting up maven often times out on macOS
           maven: ${{ matrix.os != 'macos-latest' }}
       - uses: ./.github/actions/build-zeebe
+        id: build-zeebe
         with:
           go: false
-          maven-extra-args: -am -pl qa/integration-tests -T1C
-      - name: Run smoke test
+          maven-extra-args: -T1C
+      - uses: ./.github/actions/build-docker
+        id: build-docker
+        # container smoke tests are only run on linux which is the docker target platform
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        with:
+          version: current-test
+          distball: ${{ steps.build-zeebe.outputs.distball }}
+          platforms: linux/${{ matrix.arch }}
+          push: false
+      - name: Run smoke test on ${{ matrix.arch }}
+        env:
+          DOCKER_DEFAULT_PLATFORM: linux/${{ matrix.arch }}
         run: >
           mvn -B --no-snapshot-updates
           -DskipUTs -DskipChecks -Dsurefire.rerunFailingTestsCount=3
@@ -203,7 +219,7 @@ jobs:
         uses: ./.github/actions/collect-test-artifacts
         if: always()
         with:
-          name: Smoke Tests ${{ matrix.os }}
+          name: Smoke Tests ${{ matrix.os }} on ${{ matrix.arch }}
   property-tests:
     name: Property Tests
     runs-on: [ self-hosted, linux, "16" ]
