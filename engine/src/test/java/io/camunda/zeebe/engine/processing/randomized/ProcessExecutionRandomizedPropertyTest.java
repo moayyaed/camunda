@@ -17,6 +17,7 @@ import io.camunda.zeebe.test.util.bpmn.random.TestDataGenerator;
 import io.camunda.zeebe.test.util.bpmn.random.TestDataGenerator.TestDataRecord;
 import io.camunda.zeebe.test.util.record.RecordingExporter;
 import java.util.Collection;
+import java.util.List;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestWatcher;
@@ -83,9 +84,9 @@ public class ProcessExecutionRandomizedPropertyTest {
 
   @Parameters(name = "{0}")
   public static Collection<TestDataGenerator.TestDataRecord> getTestRecords() {
-    return TestDataGenerator.generateTestRecords(
-        Integer.parseInt(PROCESS_COUNT), Integer.parseInt(EXECUTION_PATH_COUNT));
-    //    return List.of(
-    //        TestDataGenerator.regenerateTestRecord(-8532388551768899121L, -6565756334590616537L));
+    //    return TestDataGenerator.generateTestRecords(
+    //        Integer.parseInt(PROCESS_COUNT), Integer.parseInt(EXECUTION_PATH_COUNT));
+    return List.of(
+        TestDataGenerator.regenerateTestRecord(5993146284312904381L, -1211250216592319980L));
   }
 }
