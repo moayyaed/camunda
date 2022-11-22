@@ -1,0 +1,113 @@
+name: Benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'Specifies the name of the benchmark'
+        required: true
+      branch:
+        description: 'Specifies the branch to benchmark'
+        default: 'main'
+        required: false
+      components:
+        description: 'Specifies which benchmark components to deploy. Must be a comma seperated list'
+        default: 'worker,starter'
+        required: false
+      cluster:
+        description: 'Specifies which cluster to deploy the benchmark on'
+        default: 'zeebe-cluster'
+        required: false
+      cluster-region:
+        description: 'Specifies the cluster region. Needed to retrieve cluster credentials'
+        default: europe-west1-b
+        required: false
+
+jobs:
+  build-zeebe-image:
+    name: Build zeebe image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - run: |
+          echo "Benchmark name must not be empty"
+          exit 1
+        if: inputs.name == ''
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.branch }}
+      - uses: google-github-actions/auth@v1
+        with:
+          credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
+      - uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: zeebe-io
+          install_components: gke-gcloud-auth-plugin, kubectl
+      - run: gcloud auth configure-docker
+      - uses: ./.github/actions/setup-zeebe
+      - uses: ./.github/actions/build-zeebe
+        id: build-zeebe
+        with:
+          maven-extra-args: -T1C
+      - uses: ./.github/actions/build-docker
+        with:
+          repository: gcr.io/zeebe-io/zeebe
+          version: ${{ inputs.name }}
+          push: true
+          distball: ${{ steps.build-zeebe.outputs.distball }}
+  deploy-benchmark-cluster:
+    name: Deploy benchmark cluster
+    needs:
+      - build-zeebe-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.branch }}
+      - uses: google-github-actions/auth@v1
+        with:
+          credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
+      - uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: zeebe-io
+          install_components: gke-gcloud-auth-plugin, kubectl
+      - uses: google-github-actions/get-gke-credentials@v0.8.2
+        with:
+          cluster_name: ${{ inputs.cluster }}
+          location: ${{ inputs.cluster-region }}
+      - uses: 'vimeda/helm@v1'
+        with:
+          release: ${{ inputs.name }}
+          namespace: ${{ inputs.name }}
+          chart: 'camunda/camunda-platform'
+          values: |
+            global.image.tag: ${{ inputs.name }}
+          value-files: >-
+            [ benchmarks/setup/default/zeebe-values.yaml ]
+  deploy-benchmark-components:
+    name: Deploy benchmark cluster
+    needs:
+      - deploy-benchmark-cluster
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.branch }}
+      - uses: google-github-actions/auth@v1
+        with:
+          credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
+      - uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: zeebe-io
+          install_components: gke-gcloud-auth-plugin, kubectl
+      - uses: google-github-actions/get-gke-credentials@v0.8.2
+        with:
+          cluster_name: ${{ inputs.cluster }}
+          location: ${{ inputs.cluster-region }}
+      - run: |
+          # language=shell script
+          IFS="," read -a components <<< ${{ env.VALUE_ARRAY_AS_STRING }}
+          for i in "${components[@]}"; do
+            kubectl apply -f benchmarks/setup/default/${i}.yml
+          done
